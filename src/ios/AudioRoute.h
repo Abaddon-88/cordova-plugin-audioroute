@@ -1,5 +1,4 @@
 #import <AVFoundation/AVFoundation.h>
-#import <Foundation/Foundation.h>
 #import <Cordova/CDV.h>
 
 @interface AudioRoute :CDVPlugin {
@@ -11,6 +10,5 @@
 - (void) currentOutputs:(CDVInvokedUrlCommand*)command;
 - (void) overrideOutput:(CDVInvokedUrlCommand*)command;
 - (void) setRouteChangeCallback:(CDVInvokedUrlCommand*)command;
-- (void) startProximitySensor:(CDVInvokedUrlCommand*)command;
 
 @end

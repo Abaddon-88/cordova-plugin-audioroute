@@ -143,7 +143,7 @@ NSString *_media;
 
     // make sure the AVAudioSession is properly configured
     [_session setActive: YES error: nil];
-    [_session setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
+    [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:_incallAudioMode error:nil];
 
     if (output != nil) {
         if ([output isEqualToString:@"speaker"]) {
@@ -169,7 +169,6 @@ NSString *_media;
     
     _session = [AVAudioSession sharedInstance];
 
-    NSLog(@"AudioRoute.storeOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _session.category _session.mode);
     _origAudioCategory = _session.category;
     _origAudioMode = _session.mode;
 
@@ -186,14 +185,11 @@ NSString *_media;
     if (targetMode.length > 0 && ![_session.mode isEqualToString:targetMode]) {
         [_session setActive: YES error: nil];
         [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:targetMode error:nil];
-        NSLog(@"AudioRoute.setForceSpeakerphoneOn() audio mode has changed to %@", targetMode);
     }
 }
 
 - (void)stop:(CDVInvokedUrlCommand*)command
 {
-    NSLog(@"AudioRoute.restoreOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _session.category, _session.mode);
-    
     [_session setCategory:_origAudioCategory mode:_origAudioMode];
 }
 

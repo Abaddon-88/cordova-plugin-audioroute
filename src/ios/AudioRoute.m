@@ -20,13 +20,7 @@ NSString *const kWakeFromSleep              = @"wake-from-sleep";
 NSString *const kNoSuitableRouteForCategory = @"no-suitable-route-for-category";
 NSString *const kRouteConfigurationChange   = @"route-config-change";
 
-UIDevice *_currentDevice;
-AVAudioSession *_audioSession;
-
-BOOL _isProximityRegistered;
-BOOL _proximityIsNear;
-
-int _forceSpeakerOn;
+AVAudioSession *_session;
 
 NSString *_incallAudioMode;
 NSString *_incallAudioCategory;
@@ -34,8 +28,6 @@ NSString *_origAudioCategory;
 NSString *_origAudioMode;
 
 NSString *_media;
-
-id _proximityObserver;
 
 - (void)pluginInitialize 
 {
@@ -45,13 +37,6 @@ id _proximityObserver;
                                           selector:@selector(routeChange:)
                                           name:AVAudioSessionRouteChangeNotification
                                           object:nil];
-    _currentDevice = [UIDevice currentDevice];
-    _audioSession = [AVAudioSession sharedInstance];
-
-    _isProximityRegistered = NO;
-    _proximityIsNear = NO;
-
-    _forceSpeakerOn = 0;
 
     _incallAudioMode = AVAudioSessionModeVoiceChat;
     _incallAudioCategory = AVAudioSessionCategoryPlayAndRecord;
@@ -59,8 +44,6 @@ id _proximityObserver;
     _origAudioMode = nil;
 
     _media = @"audio";
-
-    _proximityObserver = nil;
 
     NSLog(@"AudioRoute plugin initialized");
 }
@@ -156,17 +139,17 @@ id _proximityObserver;
     BOOL success;
     NSError* error;
 
-    AVAudioSession* session = [AVAudioSession sharedInstance];
+    _session = [AVAudioSession sharedInstance];
 
     // make sure the AVAudioSession is properly configured
-    [session setActive: YES error: nil];
-    [session setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
+    [_session setActive: YES error: nil];
+    [_session setCategory:AVAudioSessionCategoryPlayAndRecord error:nil];
 
     if (output != nil) {
         if ([output isEqualToString:@"speaker"]) {
-            success = [session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
+            success = [_session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
         } else {
-            success = [session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:&error];
+            success = [_session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:&error];
         }
         if (success) {
             pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK];
@@ -180,164 +163,38 @@ id _proximityObserver;
     [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
 }
 
--(void) setForceSpeakerphoneOn:(CDVInvokedUrlCommand*)command 
-{
-    int flag = [command.arguments objectAtIndex:0];
-    _forceSpeakerOn = flag;
-    NSLog(@"AudioRoute.setForceSpeakerphoneOn(): flag: %d", flag);
-
-    int overrideAudioPort;
-    NSString *overrideAudioPortString = @"";
-    NSString *audioMode = @"";
-
-    // --- WebRTC native code will change audio mode automatically when established.
-    // --- It would have some race condition if we change audio mode with webrtc at the same time.
-    // --- So we should not change audio mode as possible as we can. Only when default video call which wants to force speaker off.
-    // --- audio: only override speaker on/off; video: should change category if needed and handle proximity sensor. ( because default proximity is off when video call )
-    if (_forceSpeakerOn == 1) {
-        // --- force ON, override speaker only, keep audio mode remain.
-        overrideAudioPort = AVAudioSessionPortOverrideSpeaker;
-        overrideAudioPortString = @".Speaker";
-        if ([_media isEqualToString:@"video"]) {
-            audioMode = AVAudioSessionModeVideoChat;
-            [self stopProximitySensor];
-        }
-    } else if (_forceSpeakerOn == -1) {
-        // --- force off
-        overrideAudioPort = AVAudioSessionPortOverrideNone;
-        overrideAudioPortString = @".None";
-        if ([_media isEqualToString:@"video"]) {
-            audioMode = AVAudioSessionModeVoiceChat;
-            [self startProximitySensor];
-        }
-    } else { // use default behavior
-        overrideAudioPort = AVAudioSessionPortOverrideNone;
-        overrideAudioPortString = @".None";
-        if ([_media isEqualToString:@"video"]) {
-            audioMode = AVAudioSessionModeVideoChat;
-            [self stopProximitySensor];
-        }
-    }
-
-    BOOL isCurrentRouteToSpeaker;
-    isCurrentRouteToSpeaker = [self checkAudioRoute:@[AVAudioSessionPortBuiltInSpeaker] routeType:@"output"];
-    if ((overrideAudioPort == AVAudioSessionPortOverrideSpeaker && !isCurrentRouteToSpeaker)
-            || (overrideAudioPort == AVAudioSessionPortOverrideNone && isCurrentRouteToSpeaker)) {
-        @try {
-            [_audioSession overrideOutputAudioPort:overrideAudioPort error:nil];
-            NSLog(@"AudioRoute.setForceSpeakerphoneOn(): audioSession.overrideOutputAudioPort(%@) success", overrideAudioPortString);
-        } @catch (NSException *e) {
-            NSLog(@"AudioRoute.setForceSpeakerphoneOn(): audioSession.overrideOutputAudioPort(%@) fail: %@", overrideAudioPortString, e.reason);
-        }
-    } else {
-        NSLog(@"AudioRoute.setForceSpeakerphoneOn(): did NOT overrideOutputAudioPort()");
-    }
-
-    if (audioMode.length > 0 && ![_audioSession.mode isEqualToString:audioMode]) {
-        [self audioSessionSetMode:audioMode
-                       callerMemo:NSStringFromSelector(_cmd)];
-        NSLog(@"AudioRoute.setForceSpeakerphoneOn() audio mode has changed to %@", audioMode);
-    } else {
-        NSLog(@"AudioRoute.setForceSpeakerphoneOn() did NOT change audio mode");
-    }
-}
-
-- (BOOL)checkAudioRoute:(NSArray<NSString *> *)targetPortTypeArray
-              routeType:(NSString *)routeType
-{
-    AVAudioSessionRouteDescription *currentRoute = _audioSession.currentRoute;
-
-    if (currentRoute != nil) {
-        NSArray<AVAudioSessionPortDescription *> *routes = [routeType isEqualToString:@"input"]
-            ? currentRoute.inputs
-            : currentRoute.outputs;
-        for (AVAudioSessionPortDescription *portDescription in routes) {
-            if ([targetPortTypeArray containsObject:portDescription.portType]) {
-                return YES;
-            }
-        }
-    }
-    return NO;
-}
-
-- (void)startProximitySensor:(CDVInvokedUrlCommand*)command 
-{
-    if (_isProximityRegistered) {
-        return;
-    }
-
-    NSLog(@"AudioRoute.startProximitySensor()");
-    // _currentDevice.proximityMonitoringEnabled = YES;
-    _currentDevice.proximityMonitoringEnabled = NO;
-
-    CDVPluginResult* pluginResult;
-    
-    // --- in case it didn't deallocate when ViewDidUnload
-    [self stopObserve:_proximityObserver
-                 name:UIDeviceProximityStateDidChangeNotification
-               object:nil];
-
-    _proximityObserver = [self startObserve:UIDeviceProximityStateDidChangeNotification
-                                     object:_currentDevice
-                                      queue: nil
-                                      block:^(NSNotification *notification) {
-        BOOL state = _currentDevice.proximityState;
-        if (state != _proximityIsNear) {
-            NSLog(@"AudioRoute.UIDeviceProximityStateDidChangeNotification(): isNear: %@", state ? @"YES" : @"NO");
-            _proximityIsNear = state;
-            BOOL near = state ? YES : NO; 
-            pluginResult = [CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsBool:near];
-            [self.commandDelegate sendPluginResult:pluginResult callbackId:command.callbackId];
-        }
-    }];
-
-    _isProximityRegistered = YES;
-}
-
-- (void)stopProximitySensor
-{
-    if (!_isProximityRegistered) {
-        return;
-    }
-
-    NSLog(@"AudioRoute.stopProximitySensor()");
-    _currentDevice.proximityMonitoringEnabled = NO;
-
-    // --- remove all no matter what object
-    [self stopObserve:_proximityObserver
-                 name:UIDeviceProximityStateDidChangeNotification
-               object:nil];
-
-    _isProximityRegistered = NO;
-}
-
 - (void)start:(CDVInvokedUrlCommand*)command
 {
     NSString* mediaType = [command.arguments objectAtIndex:0];
     
-    NSLog(@"AudioRoute.storeOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _audioSession.category _audioSession.mode);
-    _origAudioCategory = _audioSession.category;
-    _origAudioMode = _audioSession.mode;
+    _session = [AVAudioSession sharedInstance];
+
+    NSLog(@"AudioRoute.storeOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _session.category _session.mode);
+    _origAudioCategory = _session.category;
+    _origAudioMode = _session.mode;
 
     _media = mediaType;
 
+    NSString *targetMode = @"";
     if ([_media isEqualToString:@"video"]) {
-        _incallAudioMode = AVAudioSessionModeVideoChat;
+        targetMode = AVAudioSessionModeVideoChat;
     } else {
-        _incallAudioMode = AVAudioSessionModeVoiceChat;
+        targetMode = AVAudioSessionModeVoiceChat;
+    }
+
+    _incallAudioMode = targetMode;
+    if (targetMode.length > 0 && ![_session.mode isEqualToString:targetMode]) {
+        [_session setActive: YES error: nil];
+        [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:targetMode error:nil];
+        NSLog(@"AudioRoute.setForceSpeakerphoneOn() audio mode has changed to %@", targetMode);
     }
 }
 
 - (void)stop:(CDVInvokedUrlCommand*)command
 {
-    NSLog(@"AudioRoute.restoreOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _audioSession.category, _audioSession.mode);
-    [self stopProximitySensor];
-
-    [self audioSessionSetCategory:_origAudioCategory
-                          options:0
-                       callerMemo:NSStringFromSelector(_cmd)];
-    [self audioSessionSetMode:_origAudioMode
-                   callerMemo:NSStringFromSelector(_cmd)];
+    NSLog(@"AudioRoute.restoreOriginalAudioSetup(): origAudioCategory=%@, origAudioMode=%@", _session.category, _session.mode);
+    
+    [_session setCategory:_origAudioCategory mode:_origAudioMode];
 }
 
 

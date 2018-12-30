@@ -29,6 +29,9 @@ NSString *_origAudioMode;
 
 NSString *_media;
 
+NSUInteger _optionsFlag;
+NSUInteger _originalOptionsFlag;
+
 - (void)pluginInitialize 
 {
     NSLog(@"Initializing AudioRoute plugin");
@@ -42,6 +45,11 @@ NSString *_media;
     _incallAudioCategory = AVAudioSessionCategoryPlayAndRecord;
     _origAudioCategory = nil;
     _origAudioMode = nil;
+
+    _optionsFlag =  AVAudioSessionCategoryOptionDefaultToSpeaker    |
+                    AVAudioSessionCategoryOptionAllowBluetooth      |
+                    AVAudioSessionCategoryOptionAllowAirPlay        |
+                    AVAudioSessionCategoryOptionAllowBluetoothA2DP;
 
     _media = @"audio";
 
@@ -143,7 +151,7 @@ NSString *_media;
 
     // make sure the AVAudioSession is properly configured
     [_session setActive: YES error: nil];
-    [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:_incallAudioMode error:nil];
+    [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:_incallAudioMode options:_optionsFlag error:nil];
 
     if (output != nil) {
         if ([output isEqualToString:@"speaker"]) {
@@ -171,6 +179,7 @@ NSString *_media;
 
     _origAudioCategory = _session.category;
     _origAudioMode = _session.mode;
+    _originalOptionsFlag = _session.categoryOptions;
 
     _media = mediaType;
 
@@ -184,13 +193,13 @@ NSString *_media;
     _incallAudioMode = targetMode;
     if (targetMode.length > 0 && ![_session.mode isEqualToString:targetMode]) {
         [_session setActive: YES error: nil];
-        [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:targetMode error:nil];
+        [_session setCategory:AVAudioSessionCategoryPlayAndRecord mode:targetMode options:_optionsFlag  error:nil];
     }
 }
 
 - (void)stop:(CDVInvokedUrlCommand*)command
 {
-    [_session setCategory:_origAudioCategory mode:_origAudioMode];
+    [_session setCategory:_origAudioCategory mode:_origAudioMode options:_originalOptionsFlag error:nil];
 }
 
 

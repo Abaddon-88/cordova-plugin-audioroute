@@ -199,7 +199,10 @@ NSUInteger _originalOptionsFlag;
 
 - (void)stop:(CDVInvokedUrlCommand*)command
 {
-    [_session setCategory:_origAudioCategory mode:_origAudioMode options:_originalOptionsFlag error:nil];
+    if(_session) {
+        [_session setCategory:_origAudioCategory mode:_origAudioMode options:_originalOptionsFlag error:nil];
+        [_session setActive:NO withOptions:AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation error:nil];
+    }
 }
 
 

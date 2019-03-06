@@ -174,7 +174,7 @@ NSUInteger _originalOptionsFlag;
 - (void)setAudioMode:(CDVInvokedUrlCommand *)command
 {
     NSError* __autoreleasing err = nil;
-    NSString* mode = [NSString stringWithFormat:@"%@", [command.arguments objectAtIndex:0]];
+    NSString* mode = [command.arguments objectAtIndex:0];
     
     UInt32 audioRouteOverride = kAudioSessionOverrideAudioRoute_None;
     AVAudioSession *session = [AVAudioSession sharedInstance];

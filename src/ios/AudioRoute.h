@@ -9,6 +9,7 @@
 - (void) stop:(CDVInvokedUrlCommand*)command;
 - (void) currentOutputs:(CDVInvokedUrlCommand*)command;
 - (void) overrideOutput:(CDVInvokedUrlCommand*)command;
+- (void) setAudioMode:(CDVInvokedUrlCommand*)command;
 - (void) setRouteChangeCallback:(CDVInvokedUrlCommand*)command;
 
 @end

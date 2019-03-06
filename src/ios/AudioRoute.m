@@ -155,7 +155,7 @@ NSUInteger _originalOptionsFlag;
 
     if (output != nil) {
         if ([output isEqualToString:@"speaker"]) {
-            success = [_session overrideOutputAudioPort:AVAudioSessionPortOverrideSpeaker error:&error];
+            success = [_session overrideOutputAudioPort:AVAudioSessionCategoryPlayAndRecord withOptions:AVAudioSessionCategoryOptionDefaultToSpeaker error:&error];
         } else {
             success = [_session overrideOutputAudioPort:AVAudioSessionPortOverrideNone error:&error];
         }
